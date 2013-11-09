@@ -59,6 +59,7 @@ void queue_add_head(int sock, char* ip, int port){
 	}
 	head = newnode;
 	queuecount++;
+	printf("queuecount: %d\n", queuecount);
 	pthread_mutex_unlock(&lock);
 }
 
@@ -77,6 +78,7 @@ void* worker_start(void* info){
 			tail = tail->prev;
 		}
 		queuecount--;
+		printf("queuecount: %d\n", queuecount);
 		pthread_mutex_unlock(&lock);
 		char* filename = (char*)malloc(1024);
 		getrequest(request->sock, filename, 1024);
@@ -88,11 +90,6 @@ void* worker_start(void* info){
 		
 		struct stat fstats;
 		stat(filename, &fstats);
-		/*if(stat(filename, &fstats)){
-			FILE* request_file 
-		}else{
-		
-		}*/
 		FILE* request_file = fopen(filename, "r");
 		char* header;
 		char* request_result;
@@ -100,6 +97,7 @@ void* worker_start(void* info){
 			int strsize = fstats.st_size + strlen(HTTP_200) + 1;
 			header = (char*)malloc(strsize);
 			header[strsize-1] = '\0';
+			strcat(header, HTTP_200);
 			fread(header, 1, strsize-1, request_file);
 			fclose(request_file);
 			request_result = "200";		
@@ -108,6 +106,7 @@ void* worker_start(void* info){
 			request_result = "404";	
 		}
 		pthread_mutex_lock(&file_lock);
+		printf("header: %s\n",header);
 		FILE* log = fopen("weblog.txt","a");
 		if(senddata(request->sock, header, strlen(header))){
 			time_t now = time(NULL);
