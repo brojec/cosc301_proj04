@@ -12,6 +12,22 @@
 
 #include "network.h"
 
+struct node{
+	int sock;
+	char* ip;
+	int port;
+	struct node* next;
+	struct node* prev;
+
+};
+
+struct threaddata{
+	struct node* head;
+	struct node* tail;
+	pthread_mutex_t filelock;
+	pthread_mutex_t taillock;
+	pthread_cond_t cond;
+};
 
 // global variable; can't be avoided because
 // of asynchronous signal interaction
@@ -28,14 +44,106 @@ void usage(const char *progname) {
     exit(0);
 }
 
+void queue_add_head(int sock, struct node** head, struct node** tail, pthread_mutex_t* tail_lock, char* ip, int port){
+	struct node* newnode = (struct node*)malloc(sizeof(struct node));
+	newnode->sock = sock;
+	newnode->prev = NULL;
+	newnode->ip = ip;
+	newnode->port = port;
+	if(*head){
+		newnode->next = (*head)->next;
+		(*head)->next->prev = newnode;
+		pthread_mutex_lock(tail_lock);
+		if(!*tail)
+			*tail = *head;
+		pthread_mutex_unlock(tail_lock);
+	}else{
+		newnode->next = NULL;
+		pthread_mutex_lock(tail_lock);
+		if(!*tail)
+			*tail = newnode;
+		pthread_mutex_lock(tail_lock);
+	}
+	*head = newnode;
+}
+
+void* worker_start(void* info){
+	struct threaddata* infos = (struct threaddata*)info;
+	struct node* head = infos->head;
+	struct node* tail = infos->tail;
+	pthread_mutex_t file_lock = infos->filelock;
+	pthread_mutex_t tail_lock = infos->taillock;
+	pthread_cond_t cond = infos->cond;
+	while(TRUE){
+		pthread_cond_wait(&cond, &tail_lock);
+		if(head==tail)
+			head = NULL;
+		struct node* request = tail;
+		tail = tail->prev;
+		pthread_mutex_unlock(&tail_lock);
+		char* filename = (char*)malloc(sizeof(char)*1024);
+		getrequest(request->sock, filename, 1024);
+		//ignore leading '/'
+		if(filename[0] == '/')
+			memmove(filename, filename+1, sizeof(filename)-1);
+		
+		FILE* request_file = fopen(filename, "r");
+		struct stat fstats;
+		stat(filename, &fstats);
+		char* header;
+		char* request_result;
+		if(request_file){
+			int strsize = fstats.st_size + strlen(HTTP_200) + 1;
+			header = (char*)malloc(strsize);
+			header[strsize-1] = '\0';
+			fread(header, 1, strsize-1, request_file);
+			fclose(request_file);
+			request_result = "200";		
+		}else{
+			header = HTTP_404;
+			request_result = "404";	
+		}
+		pthread_mutex_lock(&file_lock);
+		FILE* log = fopen("weblog.txt","a");
+		if(senddata(request->sock, header, strlen(header))){
+			time_t now = time(NULL);
+			fprintf(log, "%s:%d %s \"GET %s\" %s %ld\n",request->ip,request->port, ctime(&now), filename, request_result, fstats.st_size); 
+		}
+		pthread_mutex_unlock(&file_lock);
+		free(request);
+		free(header);
+	}
+
+
+}
+
+
 void runserver(int numthreads, unsigned short serverport) {
-    //////////////////////////////////////////////////
-
-    // create your pool of threads here
-
-    //////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////
+	struct node* head = NULL;
+	struct node* tail = NULL;
+	pthread_mutex_t tail_lock;
+	pthread_mutex_init(&tail_lock, NULL);
+	
+	pthread_mutex_t filelock;
+	pthread_mutex_init(&filelock, NULL);
+	
+	pthread_cond_t task_queue;
+	pthread_cond_init(&task_queue, NULL);
+	//pthread_t* pool = (pthread_t*)malloc(numthreads*sizeof(pthread_t));
+	struct threaddata* info = (struct threaddata*)malloc(sizeof(struct threaddata));
+	info->head = head;
+	info->tail = tail;
+	info->filelock = filelock;
+	info->taillock = tail_lock;
+	info->cond = task_queue;
+	int i=0;
+	for(;i<numthreads;i++){
+		pthread_t thread;
+		pthread_create(&thread,NULL, &worker_start, info); 
+	}
     
-    
+//////////////////////////////////////////////////////////////   
     int main_socket = prepare_server_socket(serverport);
     if (main_socket < 0) {
         exit(-1);
@@ -65,19 +173,13 @@ void runserver(int numthreads, unsigned short serverport) {
         if (new_sock > 0) {
             
             time_t now = time(NULL);
-            fprintf(stderr, "Got connection from %s:%d at %s\n", inet_ntoa(client_address.sin_addr), ntohs(client_address.sin_port), ctime(&now));
-
-           ////////////////////////////////////////////////////////
-           /* You got a new connection.  Hand the connection off
-            * to one of the threads in the pool to process the
-            * request.
-            *
-            * Don't forget to close the socket (in the worker thread)
-            * when you're done.
-            */
-           ////////////////////////////////////////////////////////
-
-
+            char* ip = inet_ntoa(client_address.sin_addr);
+            int port = ntohs(client_address.sin_port);
+            fprintf(stderr, "Got connection from %s:%d at %s\n", ip, port, ctime(&now));
+/////////////////////////////////////////////////////////////////////
+           queue_add_head(new_sock, &head, &tail, &tail_lock, ip, port);
+           pthread_cond_signal(&task_queue);
+/////////////////////////////////////////////////////////////////////
         }
     }
     fprintf(stderr, "Server shutting down.\n");

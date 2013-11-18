@@ -1,4 +1,4 @@
-CC = gcc
+CC = clang
 CFLAGS = -g -Wall -pthread
 TARGET = webserver
 OBJS = main.o network.o
