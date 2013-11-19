@@ -50,15 +50,12 @@ void queue_add_head(int sock, char* ip, int port){
 	newnode->ip = ip;
 	newnode->port = port;
 	pthread_mutex_lock(&lock);
-	if(head){
-		newnode->next = head->next;
-		head->next->prev = newnode;
-		if(!tail)
-			tail = head;
-	}else{
+	if(queuecount==0){
 		newnode->next = NULL;
-		if(!tail)
-			tail = newnode;
+		tail = newnode;
+	}else{
+		newnode->next = head;
+		head->prev = newnode;
 	}
 	head = newnode;
 	queuecount++;
@@ -72,21 +69,31 @@ void* worker_start(void* info){
 			pthread_cond_wait(&cond, &lock);
 		}
 		printf("processing request\n");
-		if(head==tail)
-			head = NULL;
 		struct node* request = tail;
-		tail = tail->prev;
+		if(queuecount==1){
+			head = NULL;
+			tail = NULL;
+		}else{
+			tail = tail->prev;
+		}
 		queuecount--;
 		pthread_mutex_unlock(&lock);
-		char* filename = (char*)malloc(sizeof(char)*1024);
+		char* filename = (char*)malloc(1024);
 		getrequest(request->sock, filename, 1024);
+		printf("filename: %s\n", filename);
 		//ignore leading '/'
-		if(filename[0] == '/'){
-			memmove(filename, filename+1, sizeof(filename)-1);
-		}
-		FILE* request_file = fopen(filename, "r");
+		if(filename[0]=='/')
+			memmove(filename, filename+1, strlen(filename)-1);
+		printf("attempting to find file (%s)\n",filename);
+		
 		struct stat fstats;
 		stat(filename, &fstats);
+		/*if(stat(filename, &fstats)){
+			FILE* request_file 
+		}else{
+		
+		}*/
+		FILE* request_file = fopen(filename, "r");
 		char* header;
 		char* request_result;
 		if(request_file){
@@ -108,6 +115,7 @@ void* worker_start(void* info){
 		}
 		pthread_mutex_unlock(&file_lock);
 		free(request);
+		free(filename);
 		if(header!=HTTP_404){
 			free(header);
 		}
