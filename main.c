@@ -83,7 +83,7 @@ void* worker_start(void* info){
 		printf("filename: %s\n", filename);
 		//ignore leading '/'
 		if(filename[0]=='/')
-			memmove(filename, filename+1, strlen(filename)-1);
+			memmove(filename, filename+1, strlen(filename));
 		printf("attempting to find file (%s)\n",filename);
 		
 		struct stat fstats;
