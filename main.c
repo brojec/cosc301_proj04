@@ -111,7 +111,9 @@ void* worker_start(void* info){
 		FILE* log = fopen("weblog.txt","a");
 		if(senddata(request->sock, header, strlen(header))){
 			time_t now = time(NULL);
-			fprintf(log, "%s:%d %s \"GET %s\" %s %ld\n",request->ip,request->port, ctime(&now), filename, request_result, fstats.st_size); 
+			char* time = ctime(&now);
+			time[strlen(time)-1] = '\0';//move null-terminator up to get rid of 							      		  trailing '\n'
+			fprintf(log, "%s:%d %s \"GET %s\" %s %ld\n",request->ip,request->port, time, filename, request_result, fstats.st_size); 
 		}
 		pthread_mutex_unlock(&file_lock);
 		free(request);
