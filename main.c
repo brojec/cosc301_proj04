@@ -68,8 +68,10 @@ void* worker_start(void* info){
 		pthread_mutex_lock(&lock);
 		while(queuecount==0){
 			pthread_cond_wait(&cond, &lock);
+			if(!still_running)
+				return NULL;
 		}
-		printf("processing request\n");
+
 		struct node* request = tail;
 		if(queuecount==1){
 			head = NULL;
@@ -86,7 +88,7 @@ void* worker_start(void* info){
 		//ignore leading '/'
 		if(filename[0]=='/')
 			memmove(filename, filename+1, strlen(filename));
-		printf("attempting to find file (%s)\n",filename);
+		printf("attempting to find file: %s\n",filename);
 		
 		struct stat fstats;
 		stat(filename, &fstats);
@@ -94,11 +96,11 @@ void* worker_start(void* info){
 		char* header;
 		char* request_result;
 		if(request_file){
-			int strsize = fstats.st_size + strlen(HTTP_200) + 1;
+			int strsize = fstats.st_size + 128;
 			header = (char*)malloc(strsize);
 			header[strsize-1] = '\0';
-			strcat(header, HTTP_200);
-			fread(header, 1, strsize-1, request_file);
+			sprintf(header, HTTP_200, fstats.st_size);
+			fread(header+strlen(header), 1, strsize-1, request_file);
 			fclose(request_file);
 			request_result = "200";		
 		}else{
@@ -121,7 +123,6 @@ void* worker_start(void* info){
 			free(header);
 		}
 	}
-
 
 }
 
@@ -174,6 +175,7 @@ void runserver(int numthreads, unsigned short serverport) {
 /////////////////////////////////////////////////////////////////////
         }
     }
+    pthread_cond_broadcast(&cond);
     fprintf(stderr, "Server shutting down.\n");
         
     close(main_socket);
