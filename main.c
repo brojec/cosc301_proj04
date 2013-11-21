@@ -96,7 +96,7 @@ void* worker_start(void* info){
 		char* header;
 		char* request_result;
 		if(request_file){
-			int strsize = fstats.st_size + 128;
+			int strsize = fstats.st_size + 128; //make sure we have enough for HTTP_200 + filesize
 			header = (char*)malloc(strsize);
 			header[strsize-1] = '\0';
 			sprintf(header, HTTP_200, fstats.st_size);
@@ -108,7 +108,6 @@ void* worker_start(void* info){
 			request_result = "404";	
 		}
 		pthread_mutex_lock(&file_lock);
-		printf("header: %s\n",header);
 		FILE* log = fopen("weblog.txt","a");
 		if(senddata(request->sock, header, strlen(header))){
 			time_t now = time(NULL);
