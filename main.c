@@ -133,7 +133,7 @@ void runserver(int numthreads, unsigned short serverport) {
 		pthread_t thread;
 		pthread_create(&thread,NULL, &worker_start, NULL); 
 	}
-    	printf("made threads\n");
+    	printf("made %d threads\n", numthreads);
 //////////////////////////////////////////////////////////////   
     int main_socket = prepare_server_socket(serverport);
     if (main_socket < 0) {
